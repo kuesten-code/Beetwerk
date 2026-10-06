@@ -1,0 +1,71 @@
+# --- .NET / ASP.NET Core ---
+bin/
+obj/
+[Dd]ebug/
+[Rr]elease/
+*.user
+*.suo
+*.userprefs
+*.rsuser
+*.pdb
+TestResults/
+*.trx
+*.coverage
+coverage*.json
+coverage*.xml
+artifacts/
+publish/
+appsettings.*.local.json
+appsettings.Local.json
+
+# --- Node / Frontend (Vite, React, TS) ---
+node_modules/
+dist/
+dist-ssr/
+.vite/
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.eslintcache
+# Frontend-Build, das ins Backend kopiert wird
+src/Kuestencode.Beetwerk.Api/wwwroot/
+
+# --- Laufzeitdaten (SQLite, Uploads, Schlüssel) ---
+data/
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+uploads/
+keys/
+
+# --- Konfiguration / Secrets ---
+.env
+.env.*
+!.env.example
+*.pfx
+*.pem
+*.key
+
+# --- IDEs / Editoren ---
+.vs/
+.idea/
+*.swp
+*~
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/tasks.json
+
+# --- Betriebssystem ---
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- Logs ---
+logs/
+*.log

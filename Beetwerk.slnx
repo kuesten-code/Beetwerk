@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Kuestencode.Beetwerk.Api/Kuestencode.Beetwerk.Api.csproj" />
+    <Project Path="src/Kuestencode.Beetwerk.Data/Kuestencode.Beetwerk.Data.csproj" />
+    <Project Path="src/Kuestencode.Beetwerk.Domain/Kuestencode.Beetwerk.Domain.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Kuestencode.Beetwerk.Tests/Kuestencode.Beetwerk.Tests.csproj" />
+  </Folder>
+</Solution>
