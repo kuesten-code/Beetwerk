@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Kuestencode.Beetwerk.Domain.Entities;
+using Kuestencode.Beetwerk.Domain.Templates;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
@@ -16,6 +17,10 @@ public class BeetwerkDbContext(DbContextOptions<BeetwerkDbContext> options) : Db
     public DbSet<GardenTask> Tasks => Set<GardenTask>();
     public DbSet<User> Users => Set<User>();
     public DbSet<PushSubscription> PushSubscriptions => Set<PushSubscription>();
+    public DbSet<MapOverlay> MapOverlays => Set<MapOverlay>();
+    public DbSet<ObjectPhoto> ObjectPhotos => Set<ObjectPhoto>();
+    public DbSet<ObjectLogEntry> ObjectLog => Set<ObjectLogEntry>();
+    public DbSet<SpeciesTaskTemplate> SpeciesTaskTemplates => Set<SpeciesTaskTemplate>();
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
@@ -92,6 +97,40 @@ public class BeetwerkDbContext(DbContextOptions<BeetwerkDbContext> options) : Db
         {
             e.HasIndex(s => s.Endpoint).IsUnique();
             e.Property(s => s.DeviceLabel).HasMaxLength(200);
+        });
+
+        modelBuilder.Entity<MapOverlay>(e =>
+        {
+            e.Property(o => o.Name).HasMaxLength(200);
+            e.Property(o => o.FileName).HasMaxLength(200);
+            e.Property(o => o.ContentType).HasMaxLength(50);
+        });
+
+        modelBuilder.Entity<ObjectPhoto>(e =>
+        {
+            e.HasOne(p => p.Object).WithMany().HasForeignKey(p => p.ObjectId).OnDelete(DeleteBehavior.Cascade);
+            e.Property(p => p.FileName).HasMaxLength(200);
+            e.Property(p => p.ThumbnailFileName).HasMaxLength(200);
+            e.Property(p => p.ContentType).HasMaxLength(50);
+            e.Property(p => p.Caption).HasMaxLength(500);
+            e.Property(p => p.CreatedBy).HasMaxLength(100);
+        });
+
+        modelBuilder.Entity<ObjectLogEntry>(e =>
+        {
+            e.HasOne(l => l.Object).WithMany().HasForeignKey(l => l.ObjectId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(l => l.Photo).WithMany().HasForeignKey(l => l.PhotoId).OnDelete(DeleteBehavior.Cascade);
+            e.Property(l => l.Kind).HasConversion<string>().HasMaxLength(20);
+            e.Property(l => l.CreatedBy).HasMaxLength(100);
+            e.HasIndex(l => new { l.ObjectId, l.Date });
+            e.HasIndex(l => l.TaskId);
+        });
+
+        modelBuilder.Entity<SpeciesTaskTemplate>(e =>
+        {
+            e.HasOne(t => t.PlantSpecies).WithMany().HasForeignKey(t => t.PlantSpeciesId).OnDelete(DeleteBehavior.Cascade);
+            e.Property(t => t.Title).HasMaxLength(200);
+            e.Property(t => t.Frequency).HasConversion<string>().HasMaxLength(10);
         });
     }
 

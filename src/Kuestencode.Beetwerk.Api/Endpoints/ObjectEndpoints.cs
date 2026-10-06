@@ -22,12 +22,22 @@ public static class ObjectEndpoints
                 ? Results.Ok(obj.ToDto())
                 : Results.NotFound());
 
-        group.MapPost("/", async (GardenObjectInput input, BeetwerkDbContext db, CancellationToken ct) =>
+        group.MapPost("/", async (GardenObjectInput input, System.Security.Claims.ClaimsPrincipal user, BeetwerkDbContext db,
+            TimeProvider time, CancellationToken ct) =>
         {
             var obj = new GardenObject { Name = "", GeometryGeoJson = "" };
             if (await ApplyAsync(obj, input, db, ct) is { } error)
                 return error;
             db.Objects.Add(obj);
+            db.ObjectLog.Add(new ObjectLogEntry
+            {
+                Object = obj,
+                Date = DateOnly.FromDateTime(time.GetLocalNow().DateTime),
+                Kind = ObjectLogKind.Created,
+                Text = "Angelegt",
+                CreatedBy = user.Identity?.Name,
+                CreatedAt = time.GetUtcNow()
+            });
             await db.SaveChangesAsync(ct);
             await db.Entry(obj).Reference(o => o.PlantSpecies).LoadAsync(ct);
             return Results.Created($"/api/objects/{obj.Id}", obj.ToDto());
@@ -45,16 +55,20 @@ public static class ObjectEndpoints
             return Results.Ok(obj.ToDto());
         });
 
-        group.MapDelete("/{id:int}", async (int id, BeetwerkDbContext db, CancellationToken ct) =>
+        group.MapDelete("/{id:int}", async (int id, BeetwerkDbContext db, Services.UploadStore uploads, CancellationToken ct) =>
         {
             var obj = await db.Objects.FindAsync([id], ct);
             if (obj is null)
                 return Results.NotFound();
-            // Aufgaben am Objekt werden per Kaskade gelöscht, enthaltene Objekte verlieren nur ihre Zuordnung.
+            // Aufgaben, Verlauf und Fotos gehen per Kaskade mit, enthaltene Objekte verlieren nur ihre Zuordnung.
+            var photos = await db.ObjectPhotos.Where(p => p.ObjectId == id)
+                .Select(p => new { p.FileName, p.ThumbnailFileName })
+                .ToListAsync(ct);
             await db.Objects.Where(o => o.ParentObjectId == id)
                 .ExecuteUpdateAsync(s => s.SetProperty(o => o.ParentObjectId, (int?)null), ct);
             db.Objects.Remove(obj);
             await db.SaveChangesAsync(ct);
+            uploads.Delete([.. photos.SelectMany(p => new[] { p.FileName, p.ThumbnailFileName })]);
             return Results.NoContent();
         });
     }

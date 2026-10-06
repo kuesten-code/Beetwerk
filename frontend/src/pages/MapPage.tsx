@@ -10,7 +10,8 @@ import { useToast } from "../components/Toast";
 import { api, errorMessage } from "../lib/api";
 import { toIsoDate } from "../lib/dates";
 import { DRAW_HINTS, GEOMETRY_LABELS } from "../lib/geo";
-import type { GardenObject, GardenTask, Geometry, GeometryKind } from "../lib/types";
+import { OVERLAY_MAX_EDGE, resizeImage } from "../lib/image";
+import type { GardenObject, GardenTask, Geometry, GeometryKind, MapOverlay } from "../lib/types";
 import { GardenMap } from "../map/GardenMap";
 
 type Purpose = "object" | "task" | "boundary";
@@ -23,11 +24,12 @@ type Mode =
   | { kind: "drawing"; purpose: Purpose; geometryKind: GeometryKind; typeId?: number }
   | { kind: "objectForm"; typeId: number; geometry: Geometry; object?: GardenObject }
   | { kind: "taskForm"; geometry: Geometry | null; objectId: number | null; task?: GardenTask }
-  | { kind: "object"; id: number }
+  | { kind: "object"; id: number; fresh?: boolean }
   | { kind: "task"; task: GardenTask }
   | { kind: "editGeometry"; target: "object"; object: GardenObject }
   | { kind: "editGeometry"; target: "task"; task: GardenTask }
-  | { kind: "editGeometry"; target: "boundary"; geometry: Geometry };
+  | { kind: "editGeometry"; target: "boundary"; geometry: Geometry }
+  | { kind: "alignOverlay"; overlay: MapOverlay };
 
 const ALL_KINDS: GeometryKind[] = ["Point", "LineString", "Polygon"];
 const HIDDEN_TYPES_KEY = "beetwerk.hiddenTypes";
@@ -50,13 +52,15 @@ function saveHiddenTypes(ids: Set<number>) {
 
 export function MapPage({ active }: { active: boolean }) {
   const data = useAppData();
-  const { config, garden, objectTypes, objects, openTasks, typeById, objectById, reloadObjects, reloadTasks, setGarden } = data;
+  const { config, garden, objectTypes, objects, openTasks, typeById, objectById, reloadObjects, reloadTasks, setGarden, overlays, conflicts, reloadOverlays } = data;
   const toast = useToast();
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<GardenMap | null>(null);
   const [mode, setMode] = useState<Mode>({ kind: "idle" });
   const [hiddenTypes, setHiddenTypes] = useState<Set<number>>(loadHiddenTypes);
   const [showTasks, setShowTasks] = useState(true);
+  const [showConflicts, setShowConflicts] = useState(true);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [searchParams, setSearchParams] = useSearchParams();
 
   const selectObject = useCallback((id: number) => setMode({ kind: "object", id }), []);
@@ -108,17 +112,27 @@ export function MapPage({ active }: { active: boolean }) {
       selectedTaskId: mode.kind === "task" ? mode.task.id : null,
       hiddenObjectId: editing?.target === "object" ? editing.object.id : null,
       hiddenTaskId: editing?.target === "task" ? editing.task.id : null,
+      conflicts,
+      showConflicts,
     });
-  }, [objects, typeById, openTasks, garden.boundary, visibleTypeIds, showTasks, mode]);
+  }, [objects, typeById, openTasks, garden.boundary, visibleTypeIds, showTasks, mode, conflicts, showConflicts]);
+
+  useEffect(() => {
+    void mapRef.current?.setOverlays(overlays);
+  }, [overlays]);
 
   // Deep-Links aus Aufgabenliste und Push-Benachrichtigungen: /?objekt=1, /?aufgabe=2, /?aktion=aufgabe
   useEffect(() => {
     const objectId = Number(searchParams.get("objekt"));
     const taskId = Number(searchParams.get("aufgabe"));
     const action = searchParams.get("aktion");
-    if (!objectId && !taskId && !action) return;
+    const overlayId = Number(searchParams.get("luftbild"));
+    if (!objectId && !taskId && !action && !overlayId) return;
     setSearchParams({}, { replace: true });
-    if (objectId && objectById.has(objectId)) {
+    const overlay = overlays.find((o) => o.id === overlayId);
+    if (overlay) {
+      void startAlign(overlay);
+    } else if (objectId && objectById.has(objectId)) {
       setMode({ kind: "object", id: objectId });
       mapRef.current?.focus(objectById.get(objectId)!.geometry);
     } else if (taskId) {
@@ -130,7 +144,69 @@ export function MapPage({ active }: { active: boolean }) {
     } else if (action === "aufgabe") {
       setMode({ kind: "chooseGeometry", purpose: "task", options: ALL_KINDS });
     }
-  }, [searchParams, setSearchParams, objectById]);
+  }, [searchParams, setSearchParams, objectById, overlays]);
+
+  const [alignOpacity, setAlignOpacity] = useState(1);
+
+  async function startAlign(overlay: MapOverlay) {
+    const map = mapRef.current!;
+    map.map.fitBounds(
+      [
+        [Math.min(...overlay.corners.map((c) => c[0])), Math.min(...overlay.corners.map((c) => c[1]))],
+        [Math.max(...overlay.corners.map((c) => c[0])), Math.max(...overlay.corners.map((c) => c[1]))],
+      ],
+      { padding: 60, duration: 0 },
+    );
+    setAlignOpacity(Math.min(overlay.opacity, 0.7));
+    map.setOverlayOpacity(overlay.id, Math.min(overlay.opacity, 0.7));
+    await map.startAlign(overlay, () => undefined);
+    setMode({ kind: "alignOverlay", overlay });
+  }
+
+  async function addOverlay(file: File) {
+    try {
+      const image = await resizeImage(file, OVERLAY_MAX_EDGE, file.type === "image/png");
+      const corners = mapRef.current!.placementForView(image.width / image.height);
+      const name = file.name.replace(/\.[^.]+$/, "") || "Eigenes Luftbild";
+      const created = await api.uploadOverlay(image.blob, name, corners, image.width, image.height);
+      await reloadOverlays();
+      await mapRef.current!.setOverlays([...overlays, created]);
+      await startAlign(created);
+      toast.show("Bild hinzugefügt. Ziehe die Ecken auf passende Punkte im Luftbild.");
+    } catch (e) {
+      toast.error(errorMessage(e));
+    }
+  }
+
+  async function finishAlign() {
+    if (mode.kind !== "alignOverlay") return;
+    const corners = mapRef.current!.finishAlign();
+    if (!corners) return setMode({ kind: "idle" });
+    try {
+      // Die Deckkraft im Ausrichtmodus ist nur eine Hilfe zum Abgleichen; gespeichert bleibt die eingestellte.
+      await api.updateOverlay({ ...mode.overlay, corners, visible: true });
+      await reloadOverlays();
+      toast.show("Ausrichtung gespeichert.");
+    } catch (e) {
+      toast.error(errorMessage(e));
+    }
+    setMode({ kind: "idle" });
+  }
+
+  function cancelAlign() {
+    mapRef.current?.stopAlign();
+    void mapRef.current?.setOverlays(overlays);
+    setMode({ kind: "idle" });
+  }
+
+  async function toggleOverlay(overlay: MapOverlay) {
+    try {
+      await api.updateOverlay({ ...overlay, visible: !overlay.visible });
+      await reloadOverlays();
+    } catch (e) {
+      toast.error(errorMessage(e));
+    }
+  }
 
   const drawingKey = mode.kind === "drawing" ? `${mode.purpose}:${mode.geometryKind}:${mode.typeId}` : null;
   useEffect(() => {
@@ -291,6 +367,49 @@ export function MapPage({ active }: { active: boolean }) {
         </div>
       )}
 
+      {mode.kind === "alignOverlay" && (
+        <div className="draw-banner">
+          <p>
+            Gelbe Ecken auf passende Punkte ziehen (Hausecken, Zaunpfähle), mit ✥ das ganze Bild verschieben.
+          </p>
+          <label className="opacity-row">
+            <span>Durchsicht</span>
+            <input
+              type="range"
+              min={0.2}
+              max={1}
+              step={0.05}
+              value={alignOpacity}
+              onChange={(e) => {
+                const value = Number(e.target.value);
+                setAlignOpacity(value);
+                mapRef.current?.setOverlayOpacity(mode.overlay.id, value);
+              }}
+            />
+          </label>
+          <div className="row">
+            <button type="button" onClick={cancelAlign}>
+              Abbrechen
+            </button>
+            <button type="button" className="primary" onClick={finishAlign}>
+              Übernehmen
+            </button>
+          </div>
+        </div>
+      )}
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        hidden
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          e.target.value = "";
+          if (file) void addOverlay(file);
+        }}
+      />
+
       {mode.kind === "add" && (
         <Sheet title="Hinzufügen" onClose={close}>
           <div className="choice-grid">
@@ -339,7 +458,31 @@ export function MapPage({ active }: { active: boolean }) {
             <button type="button" className={`chip${showTasks ? " on" : ""}`} onClick={() => setShowTasks(!showTasks)} aria-pressed={showTasks}>
               ✓ Aufgaben
             </button>
+            <button type="button" className={`chip${showConflicts ? " on" : ""}`} onClick={() => setShowConflicts(!showConflicts)} aria-pressed={showConflicts}>
+              ⚠ Schlechte Nachbarn{conflicts.length > 0 && ` (${conflicts.length})`}
+            </button>
           </div>
+          <h3>Eigene Luftbilder &amp; Pläne</h3>
+          {overlays.length > 0 && (
+            <div className="chips">
+              {overlays.map((o) => (
+                <button type="button" key={o.id} className={`chip${o.visible ? " on" : ""}`} onClick={() => toggleOverlay(o)} aria-pressed={o.visible}>
+                  🖼️ {o.name}
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="actions wrap">
+            <button type="button" onClick={() => fileInputRef.current?.click()}>
+              Bild hinzufügen …
+            </button>
+            {overlays.map((o) => (
+              <button type="button" key={o.id} onClick={() => startAlign(o)}>
+                „{o.name}“ ausrichten
+              </button>
+            ))}
+          </div>
+          <p className="hint">Drohnenaufnahme oder Gartenplan als JPG/PNG. Es wird mittig in der aktuellen Ansicht platziert und dann ausgerichtet.</p>
           <h3>Garten</h3>
           <div className="actions wrap">
             <button type="button" onClick={saveStartView}>
@@ -369,7 +512,7 @@ export function MapPage({ active }: { active: boolean }) {
             typeId={mode.typeId}
             geometry={mode.geometry}
             initial={mode.object}
-            onSaved={(o) => setMode({ kind: "object", id: o.id })}
+            onSaved={(o) => setMode({ kind: "object", id: o.id, fresh: !mode.object })}
             onCancel={() => (mode.object ? setMode({ kind: "object", id: mode.object.id }) : close())}
           />
         </Sheet>
@@ -390,7 +533,9 @@ export function MapPage({ active }: { active: boolean }) {
       {selectedObject && (
         <Sheet title={selectedObject.name} onClose={close}>
           <ObjectDetail
+            key={selectedObject.id}
             object={selectedObject}
+            justCreated={mode.kind === "object" && mode.fresh === true}
             onEdit={() => setMode({ kind: "objectForm", typeId: selectedObject.objectTypeId, geometry: selectedObject.geometry, object: selectedObject })}
             onEditGeometry={() => startEditGeometry({ kind: "editGeometry", target: "object", object: selectedObject })}
             onAddTask={() => setMode({ kind: "taskForm", geometry: null, objectId: selectedObject.id })}

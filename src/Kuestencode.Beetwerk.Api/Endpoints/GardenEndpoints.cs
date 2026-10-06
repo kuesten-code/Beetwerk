@@ -56,6 +56,12 @@ public static class GardenEndpoints
             garden.CenterLongitude = input.CenterLongitude;
             garden.Zoom = input.Zoom;
             garden.BoundaryGeoJson = boundary;
+            if (input.NeighborWarningDistance is { } distance)
+            {
+                if (distance is < 0.1 or > 50)
+                    return ApiResults.Error("Der Warnabstand muss zwischen 0,1 und 50 Metern liegen.");
+                garden.NeighborWarningDistance = distance;
+            }
             await db.SaveChangesAsync(ct);
             return Results.Ok(garden.ToDto());
         });

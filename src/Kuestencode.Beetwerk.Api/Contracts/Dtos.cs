@@ -4,7 +4,7 @@ using Kuestencode.Beetwerk.Domain.Enums;
 
 namespace Kuestencode.Beetwerk.Api.Contracts;
 
-public record GardenDto(string Name, double CenterLatitude, double CenterLongitude, double Zoom, JsonElement? Boundary);
+public record GardenDto(string Name, double CenterLatitude, double CenterLongitude, double Zoom, JsonElement? Boundary, double? NeighborWarningDistance = null);
 
 public record ObjectTypeFieldDto(string Key, string Label, ObjectFieldType Type);
 
@@ -28,7 +28,19 @@ public record PlantSpeciesInput(string Name, string? ScientificName, string? Not
 
 public record NeighborDto(int RelationId, int SpeciesId, string SpeciesName, NeighborRating Rating, string? Note, string? Source);
 
-public record PlantSpeciesDetailDto(PlantSpeciesDto Species, IReadOnlyList<NeighborDto> Neighbors, int ObjectCount);
+public record PlantSpeciesDetailDto(PlantSpeciesDto Species, IReadOnlyList<NeighborDto> Neighbors, int ObjectCount, IReadOnlyList<TaskTemplateDto> Templates);
+
+public record RelationDto(int Id, int SpeciesAId, int SpeciesBId, NeighborRating Rating);
+
+public record TaskTemplateDto(
+    int Id, string Title, string? Description, RecurrenceFrequency Frequency, int Interval, int? SeasonStartMonth, int? SeasonEndMonth,
+    int? StartMonth, int StartDay, bool Notify, int LeadDays);
+
+public record TaskTemplateInput(
+    string Title, string? Description, RecurrenceFrequency Frequency, int? Interval, int? SeasonStartMonth, int? SeasonEndMonth,
+    int? StartMonth, int? StartDay, bool Notify, int LeadDays);
+
+public record ApplyTemplatesInput(IReadOnlyList<int> TemplateIds);
 
 public record NeighborRelationInput(int SpeciesId, int OtherSpeciesId, NeighborRating Rating, string? Note, string? Source);
 
@@ -42,6 +54,16 @@ public record GardenTaskInput(
     bool Notify, int LeadDays, RecurrenceFrequency Frequency, int? Interval, int? SeasonStartMonth, int? SeasonEndMonth);
 
 public record CompleteTaskResult(GardenTaskDto Completed, GardenTaskDto? Next);
+
+public record PhotoDto(int Id, string ImageUrl, string ThumbnailUrl, string? Caption);
+
+public record HistoryEntryDto(int Id, DateOnly Date, ObjectLogKind Kind, string Text, string? CreatedBy, int? TaskId, PhotoDto? Photo);
+
+public record HistoryNoteInput(DateOnly? Date, string Text);
+
+public record OverlayDto(int Id, string Name, int Width, int Height, double[][] Corners, double Opacity, bool Visible, string ImageUrl);
+
+public record OverlayInput(string Name, double[][] Corners, double Opacity, bool Visible);
 
 public record UserDto(string Username, bool IsCurrent);
 
@@ -69,7 +91,7 @@ public static class Mapping
 
     public static GardenDto ToDto(this Garden garden) =>
         new(garden.Name, garden.CenterLatitude, garden.CenterLongitude, garden.Zoom,
-            garden.BoundaryGeoJson is null ? null : ToJsonElement(garden.BoundaryGeoJson));
+            garden.BoundaryGeoJson is null ? null : ToJsonElement(garden.BoundaryGeoJson), garden.NeighborWarningDistance);
 
     public static ObjectTypeDto ToDto(this ObjectType type) =>
         new(type.Id, type.Name, type.Icon, type.Color, ToNames(type.AllowedGeometries),

@@ -11,4 +11,6 @@ public class Garden
     public double CenterLongitude { get; set; }
     public double Zoom { get; set; }
     public string? BoundaryGeoJson { get; set; }
+    /// <summary>Abstand in Metern, unter dem schlechte Nachbarn auf der Karte gewarnt werden.</summary>
+    public double NeighborWarningDistance { get; set; } = 1.0;
 }

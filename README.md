@@ -8,6 +8,11 @@ Beetwerk – selbst gehosteter Gartenplaner mit Satellitenkarte. Beete, Hecken, 
 - **Objekte** als Punkt, Linie oder Fläche: Pflanze, Beet, Hecke, Gewächshaus, Stall, Gerät und Sonstiges. Die Typen sind erweiterbar und haben eigene Zusatzfelder. Objekte lassen sich verschieben, umformen und ineinander verschachteln (z. B. Pflanze im Beet).
 - **Pflanzenarten** mit externem Link (z. B. NaturaDB, nur als Verweis) und selbst gepflegten **guten/schlechten Nachbarn**. Es werden bewusst keine Mischkultur-Daten mitgeliefert.
 - **Aufgaben** an Objekten oder an einem freien Ort auf der Karte: einmalig oder wiederkehrend (täglich, wöchentlich, monatlich, jährlich, mit Intervall und optionalem Saisonfenster). Die Regeln lassen sich als iCalendar-RRULE abbilden.
+- **Eigene Luftbilder und Pläne** (z. B. Drohnenaufnahme oder gezeichneter Gartenplan): auf der Karte über ☰ → „Bild hinzufügen …“ einfügen und über vier Ecken auf passende Punkte ziehen. Verwaltung (Deckkraft, Anzeigen, Löschen) unter **Mehr**.
+- **Warnung bei schlechten Nachbarn**: Stehen Pflanzen, deren Arten als schlechte Nachbarn eingetragen sind, näher als der Warnabstand (Standard 1 m, einstellbar unter **Mehr**), werden sie auf der Karte rot markiert und im Objekt aufgeführt.
+- **Pflanzenvorlagen**: typische Aufgaben je Art (z. B. „Ausgeizen, wöchentlich Juni bis August“). Sie werden beim Anlegen einer Pflanze dieser Art zur Übernahme angeboten.
+- **Verlauf und Fotos** je Objekt: Notizen, Fotos (direkt mit der Handykamera), angelegt und erledigte Aufgaben werden automatisch festgehalten.
+- **Kalender-Export**: Aufgaben eines Jahres als `.ics` (📅 in der Aufgabenliste). Wiederholungen als Serie, Erinnerungen als Alarm, hinter der normalen Anmeldung, ohne öffentlichen Feed.
 - **Push-Benachrichtigungen** (Web Push/VAPID). Der Scheduler prüft stündlich und meldet jede fällige Aufgabe einmal. Ein Klick öffnet die Aufgabe.
 - **PWA**, mobile first: Bedienung mit dem Finger, zum Home-Bildschirm hinzufügbar.
 - **Anmeldung** zentral für alles erzwungen: Oberfläche, API, Kartenkacheln und Push-Endpunkte. Ausgenommen sind nur `/health` und `/login`.
@@ -92,7 +97,7 @@ Alle Daten liegen in `./data`:
 | Pfad | Inhalt |
 |---|---|
 | `data/beetwerk.db` | SQLite-Datenbank (Garten, Objekte, Arten, Aufgaben, Nutzer, Push-Abos) |
-| `data/uploads/` | Uploads (für Fotos ab v2, derzeit leer) |
+| `data/uploads/` | Fotos der Objekte und eigene Luftbilder/Pläne |
 | `data/keys/` | Schlüssel für Login-Cookies und VAPID |
 
 Ein konsistentes Backup im laufenden Betrieb:
@@ -139,5 +144,5 @@ Geometrien werden als GeoJSON-Text (WGS84) gespeichert. Ein Wechsel auf PostgreS
 
 ## Ausblick
 
-- **v2**: iCal-Export (`.ics` pro Jahr, RRULE/VALARM), Pflanzenvorlagen, Fotos und Verlauf pro Objekt, eigener Plan als Bild-Overlay, Hinweis bei schlechten Nachbarn in der Nähe.
+- **Später**: GeoTIFF direkt aus WebODM übernehmen (Position automatisch aus der Datei).
 - **v3**: Geräteanbindung (z. B. Husqvarna Automower, Home Assistant). Vorbereitet sind der Objekttyp „Gerät“ und das Interface `IDeviceProvider`.

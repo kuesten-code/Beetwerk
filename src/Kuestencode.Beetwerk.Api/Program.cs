@@ -4,6 +4,7 @@ using Kuestencode.Beetwerk.Api.Cli;
 using Kuestencode.Beetwerk.Api.Configuration;
 using Kuestencode.Beetwerk.Api.Endpoints;
 using Kuestencode.Beetwerk.Api.Push;
+using Kuestencode.Beetwerk.Api.Services;
 using Kuestencode.Beetwerk.Data;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
@@ -29,6 +30,7 @@ builder.Services.AddHttpClient(TileEndpoints.HttpClientName, client =>
     client.DefaultRequestHeaders.UserAgent.ParseAdd("Beetwerk/1.0 (+self-hosted garden planner)");
 });
 
+builder.Services.AddSingleton<UploadStore>();
 builder.Services.AddSingleton<VapidKeyStore>();
 builder.Services.AddSingleton<IPushSender, WebPushSender>();
 builder.Services.AddScoped<PushDispatcher>();
@@ -101,6 +103,9 @@ api.MapSpeciesEndpoints();
 api.MapTaskEndpoints();
 api.MapPushEndpoints();
 api.MapUserEndpoints();
+api.MapOverlayEndpoints();
+api.MapTemplateEndpoints();
+api.MapHistoryEndpoints();
 api.MapFallback(() => Results.NotFound());
 
 app.MapFallbackToFile("index.html", new StaticFileOptions

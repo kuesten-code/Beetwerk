@@ -3,31 +3,41 @@ import { Link } from "react-router-dom";
 import { useAppData } from "../AppData";
 import { api } from "../lib/api";
 import { formatDate } from "../lib/dates";
-import type { GardenObject, Neighbor } from "../lib/types";
+import { formatMeters } from "../lib/neighbors";
+import type { GardenObject, PlantSpeciesDetail } from "../lib/types";
 import { NeighborList } from "./NeighborList";
+import { ObjectHistory } from "./ObjectHistory";
 import { TaskRow, useTaskActions } from "./TaskList";
+import { TemplateOffer } from "./TemplateOffer";
 
 interface ObjectDetailProps {
   object: GardenObject;
+  /** Direkt nach dem Anlegen werden die typischen Aufgaben der Art von sich aus angeboten. */
+  justCreated?: boolean;
   onEdit: () => void;
   onEditGeometry: () => void;
   onAddTask: () => void;
   onDelete: () => void;
 }
 
-export function ObjectDetail({ object, onEdit, onEditGeometry, onAddTask, onDelete }: ObjectDetailProps) {
-  const { typeById, objectById, openTasks, objects } = useAppData();
+export function ObjectDetail({ object, justCreated = false, onEdit, onEditGeometry, onAddTask, onDelete }: ObjectDetailProps) {
+  const { typeById, objectById, openTasks, objects, conflicts } = useAppData();
   const { complete } = useTaskActions();
-  const [neighbors, setNeighbors] = useState<Neighbor[] | null>(null);
+  const [species, setSpecies] = useState<PlantSpeciesDetail | null>(null);
+  const [offerTemplates, setOfferTemplates] = useState(justCreated);
   const type = typeById.get(object.objectTypeId);
   const parent = object.parentObjectId ? objectById.get(object.parentObjectId) : null;
   const children = objects.filter((o) => o.parentObjectId === object.id);
   const tasks = openTasks.filter((t) => t.objectId === object.id);
   const speciesField = type?.fields.find((f) => f.type === "Species");
+  const tooClose = conflicts
+    .filter((c) => c.a.id === object.id || c.b.id === object.id)
+    .map((c) => ({ other: c.a.id === object.id ? c.b : c.a, distance: c.distance }));
+  const attributes = type?.fields.filter((f) => f.type !== "Species" && object.attributes[f.key]) ?? [];
 
   useEffect(() => {
-    setNeighbors(null);
-    if (object.plantSpeciesId) api.speciesDetail(object.plantSpeciesId).then((d) => setNeighbors(d.neighbors), () => setNeighbors([]));
+    setSpecies(null);
+    if (object.plantSpeciesId) api.speciesDetail(object.plantSpeciesId).then(setSpecies, () => setSpecies(null));
   }, [object.plantSpeciesId]);
 
   return (
@@ -37,24 +47,46 @@ export function ObjectDetail({ object, onEdit, onEditGeometry, onAddTask, onDele
         {parent && <> · liegt in {parent.name}</>}
       </p>
 
-      <dl className="facts">
-        {speciesField && object.plantSpeciesId && (
-          <div className="fact">
-            <dt>{speciesField.label}</dt>
-            <dd>
-              <Link to={`/arten/${object.plantSpeciesId}`}>{object.plantSpeciesName}</Link>
-            </dd>
-          </div>
-        )}
-        {type?.fields
-          .filter((f) => f.type !== "Species" && object.attributes[f.key])
-          .map((f) => (
+      {tooClose.length > 0 && (
+        <div className="warning" role="alert">
+          <strong>⚠ Schlechte Nachbarn in der Nähe</strong>
+          <ul>
+            {tooClose.map(({ other, distance }) => (
+              <li key={other.id}>
+                {other.name} ({other.plantSpeciesName}) – {formatMeters(distance)}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {offerTemplates && species && species.templates.length > 0 && (
+        <TemplateOffer
+          objectId={object.id}
+          speciesName={species.species.name}
+          templates={species.templates}
+          onDone={() => setOfferTemplates(false)}
+        />
+      )}
+
+      {(speciesField && object.plantSpeciesId) || attributes.length > 0 ? (
+        <dl className="facts">
+          {speciesField && object.plantSpeciesId && (
+            <div className="fact">
+              <dt>{speciesField.label}</dt>
+              <dd>
+                <Link to={`/arten/${object.plantSpeciesId}`}>{object.plantSpeciesName}</Link>
+              </dd>
+            </div>
+          )}
+          {attributes.map((f) => (
             <div key={f.key} className="fact">
               <dt>{f.label}</dt>
               <dd>{f.type === "Date" ? formatDate(object.attributes[f.key]) : object.attributes[f.key]}</dd>
             </div>
           ))}
-      </dl>
+        </dl>
+      ) : null}
       {object.notes && <p className="notes">{object.notes}</p>}
 
       {children.length > 0 && (
@@ -64,10 +96,10 @@ export function ObjectDetail({ object, onEdit, onEditGeometry, onAddTask, onDele
         </>
       )}
 
-      {object.plantSpeciesId && neighbors && (
+      {species && species.neighbors.length > 0 && (
         <>
           <h3>Nachbarschaft</h3>
-          <NeighborList neighbors={neighbors} />
+          <NeighborList neighbors={species.neighbors} />
         </>
       )}
 
@@ -86,6 +118,11 @@ export function ObjectDetail({ object, onEdit, onEditGeometry, onAddTask, onDele
         <button type="button" className="primary" onClick={onAddTask}>
           + Aufgabe
         </button>
+        {!offerTemplates && species && species.templates.length > 0 && (
+          <button type="button" onClick={() => setOfferTemplates(true)}>
+            Typische Aufgaben …
+          </button>
+        )}
         <button type="button" onClick={onEdit}>
           Bearbeiten
         </button>
@@ -96,6 +133,9 @@ export function ObjectDetail({ object, onEdit, onEditGeometry, onAddTask, onDele
           Löschen
         </button>
       </div>
+
+      <h3>Verlauf &amp; Fotos</h3>
+      <ObjectHistory objectId={object.id} refreshKey={tasks.length} />
     </div>
   );
 }

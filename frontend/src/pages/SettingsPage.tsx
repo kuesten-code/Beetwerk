@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { useAppData } from "../AppData";
 import { Sheet } from "../components/Sheet";
 import { useToast } from "../components/Toast";
+import { OverlaysSection } from "../components/OverlaysSection";
 import { UsersSection } from "../components/UsersSection";
 import { api, errorMessage } from "../lib/api";
 import { GEOMETRY_LABELS } from "../lib/geo";
@@ -12,6 +13,7 @@ export function SettingsPage() {
   const { config, garden, setGarden, objectTypes } = useAppData();
   const toast = useToast();
   const [name, setName] = useState(garden.name);
+  const [distance, setDistance] = useState(String(garden.neighborWarningDistance));
   const [editingType, setEditingType] = useState<ObjectType | "new" | null>(null);
 
   async function saveName(event: FormEvent) {
@@ -19,6 +21,16 @@ export function SettingsPage() {
     try {
       setGarden(await api.saveGarden({ ...garden, name }));
       toast.show("Gespeichert.");
+    } catch (e) {
+      toast.error(errorMessage(e));
+    }
+  }
+
+  async function saveDistance(event: FormEvent) {
+    event.preventDefault();
+    try {
+      setGarden(await api.saveGarden({ ...garden, neighborWarningDistance: Number(distance) }));
+      toast.show("Warnabstand gespeichert.");
     } catch (e) {
       toast.error(errorMessage(e));
     }
@@ -44,7 +56,26 @@ export function SettingsPage() {
           </button>
         </form>
         <p className="hint">Startansicht und Gartengrenze stellst du auf der Karte über ☰ ein.</p>
+        <form className="row" onSubmit={saveDistance}>
+          <label className="field">
+            <span>Warnabstand für schlechte Nachbarn (m)</span>
+            <input
+              type="number"
+              min={0.1}
+              max={50}
+              step={0.1}
+              value={distance}
+              onChange={(e) => setDistance(e.target.value)}
+              required
+            />
+          </label>
+          <button type="submit" className="primary align-end" disabled={Number(distance) === garden.neighborWarningDistance}>
+            Speichern
+          </button>
+        </form>
       </section>
+
+      <OverlaysSection />
 
       <PushSection />
 

@@ -1,6 +1,12 @@
 import type {
   AppConfig,
   AppUser,
+  Corners,
+  HistoryEntry,
+  MapOverlay,
+  Relation,
+  TaskTemplate,
+  TaskTemplateInput,
   Garden,
   GardenObject,
   GardenObjectInput,
@@ -43,6 +49,16 @@ async function request<T>(method: string, url: string, body?: unknown): Promise<
     throw new ApiError(response.status, payload?.error ?? `Fehler ${response.status}`);
   }
   if (response.status === 204) return undefined as T;
+  return (await response.json()) as T;
+}
+
+async function upload<T>(url: string, form: FormData): Promise<T> {
+  const response = await fetch(url, { method: "POST", credentials: "same-origin", headers: { Accept: "application/json" }, body: form });
+  if (response.status === 401) redirectToLogin();
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null);
+    throw new ApiError(response.status, payload?.error ?? `Fehler ${response.status}`);
+  }
   return (await response.json()) as T;
 }
 
@@ -91,6 +107,41 @@ export const api = {
     post<void>("/api/push/subscriptions", { endpoint: subscription.endpoint, keys: subscription.keys, deviceLabel }),
   unsubscribePush: (endpoint: string) => del(`/api/push/subscriptions?endpoint=${encodeURIComponent(endpoint)}`),
   testPush: () => post<{ delivered: number }>("/api/push/test"),
+
+  relations: () => get<Relation[]>("/api/relations"),
+
+  overlays: () => get<MapOverlay[]>("/api/overlays"),
+  uploadOverlay: (image: Blob, name: string, corners: Corners, width: number, height: number) => {
+    const form = new FormData();
+    form.append("file", image, "luftbild");
+    form.append("name", name);
+    form.append("corners", JSON.stringify(corners));
+    form.append("width", String(width));
+    form.append("height", String(height));
+    return upload<MapOverlay>("/api/overlays", form);
+  },
+  updateOverlay: (overlay: MapOverlay) =>
+    put<MapOverlay>(`/api/overlays/${overlay.id}`, { name: overlay.name, corners: overlay.corners, opacity: overlay.opacity, visible: overlay.visible }),
+  deleteOverlay: (id: number) => del(`/api/overlays/${id}`),
+
+  createTemplate: (speciesId: number, input: TaskTemplateInput) => post<TaskTemplate>(`/api/species/${speciesId}/templates`, input),
+  updateTemplate: (id: number, input: TaskTemplateInput) => put<TaskTemplate>(`/api/templates/${id}`, input),
+  deleteTemplate: (id: number) => del(`/api/templates/${id}`),
+  applyTemplates: (objectId: number, templateIds: number[]) => post<GardenTask[]>(`/api/objects/${objectId}/apply-templates`, { templateIds }),
+
+  history: (objectId: number) => get<HistoryEntry[]>(`/api/objects/${objectId}/history`),
+  addNote: (objectId: number, date: string, text: string) => post<HistoryEntry>(`/api/objects/${objectId}/history`, { date, text }),
+  deleteHistoryEntry: (id: number) => del(`/api/history/${id}`),
+  uploadPhoto: (objectId: number, image: Blob, thumbnail: Blob, caption: string, takenOn: string) => {
+    const form = new FormData();
+    form.append("file", image, "foto");
+    form.append("thumbnail", thumbnail, "vorschau");
+    form.append("caption", caption);
+    form.append("takenOn", takenOn);
+    return upload<HistoryEntry>(`/api/objects/${objectId}/photos`, form);
+  },
+
+  calendarUrl: (year: number, includeDone: boolean) => `/api/tasks/calendar?year=${year}&includeDone=${includeDone}`,
 
   users: () => get<AppUser[]>("/api/users"),
   createUser: (username: string, password: string) => post<AppUser>("/api/users", { username, password }),

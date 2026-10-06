@@ -5,16 +5,18 @@ import { NeighborList } from "../components/NeighborList";
 import { Sheet } from "../components/Sheet";
 import { useToast } from "../components/Toast";
 import { api, errorMessage } from "../lib/api";
-import type { Neighbor, NeighborRating, PlantSpeciesDetail, PlantSpeciesInput } from "../lib/types";
+import { TemplateForm, describeTemplate } from "../components/TemplateForm";
+import type { Neighbor, NeighborRating, PlantSpeciesDetail, PlantSpeciesInput, TaskTemplate } from "../lib/types";
 
 export function SpeciesPage() {
   const id = Number(useParams().id);
   const navigate = useNavigate();
   const toast = useToast();
-  const { reloadSpecies, reloadObjects } = useAppData();
+  const { reloadSpecies, reloadObjects, reloadRelations } = useAppData();
   const [detail, setDetail] = useState<PlantSpeciesDetail | null>(null);
   const [editing, setEditing] = useState(false);
   const [relation, setRelation] = useState<Neighbor | "new" | null>(null);
+  const [template, setTemplate] = useState<TaskTemplate | "new" | null>(null);
 
   const load = useCallback(() => {
     api.speciesDetail(id).then(setDetail, (e) => toast.error(errorMessage(e)));
@@ -28,7 +30,7 @@ export function SpeciesPage() {
     if (!window.confirm(`Pflanzenart „${detail.species.name}“ samt ihrer Beziehungen löschen?${usage}`)) return;
     try {
       await api.deleteSpecies(id);
-      await Promise.all([reloadSpecies(), reloadObjects()]);
+      await Promise.all([reloadSpecies(), reloadObjects(), reloadRelations()]);
       navigate("/arten", { replace: true });
     } catch (e) {
       toast.error(errorMessage(e));
@@ -89,6 +91,44 @@ export function SpeciesPage() {
         <NeighborList neighbors={neighbors} onEdit={setRelation} />
       </section>
 
+      <section>
+        <div className="section-header">
+          <h2>Typische Aufgaben</h2>
+          <button type="button" className="primary" onClick={() => setTemplate("new")}>
+            + Vorlage
+          </button>
+        </div>
+        {detail.templates.length === 0 ? (
+          <p className="muted">Vorlagen werden beim Anlegen einer Pflanze dieser Art als Aufgaben angeboten, z. B. „Ausgeizen, wöchentlich Juni bis August“.</p>
+        ) : (
+          <ul className="link-list">
+            {detail.templates.map((t) => (
+              <li key={t.id}>
+                <button type="button" className="list-button" onClick={() => setTemplate(t)}>
+                  <span>
+                    <strong>{t.title}</strong>
+                    <small className="muted"> {describeTemplate(t)}</small>
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      {template && (
+        <Sheet title={template === "new" ? "Neue Vorlage" : template.title} onClose={() => setTemplate(null)}>
+          <TemplateForm
+            speciesId={id}
+            initial={template === "new" ? undefined : template}
+            onDone={() => {
+              setTemplate(null);
+              load();
+            }}
+          />
+        </Sheet>
+      )}
+
       {relation && (
         <Sheet title={relation === "new" ? "Neue Beziehung" : `Beziehung zu ${relation.speciesName}`} onClose={() => setRelation(null)}>
           <RelationForm
@@ -98,6 +138,7 @@ export function SpeciesPage() {
             onDone={() => {
               setRelation(null);
               load();
+              void reloadRelations();
             }}
           />
         </Sheet>

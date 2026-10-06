@@ -35,7 +35,8 @@ public static class SpeciesEndpoints
                 .ThenBy(n => n.SpeciesName)
                 .ToList();
             var objectCount = await db.Objects.CountAsync(o => o.PlantSpeciesId == id, ct);
-            return Results.Ok(new PlantSpeciesDetailDto(entity.ToDto(), neighbors, objectCount));
+            var templates = await db.SpeciesTaskTemplates.Where(t => t.PlantSpeciesId == id).OrderBy(t => t.Title).ToListAsync(ct);
+            return Results.Ok(new PlantSpeciesDetailDto(entity.ToDto(), neighbors, objectCount, templates.Select(TemplateEndpoints.ToDto).ToList()));
         });
 
         species.MapPost("/", async (PlantSpeciesInput input, BeetwerkDbContext db, CancellationToken ct) =>
@@ -70,6 +71,11 @@ public static class SpeciesEndpoints
         });
 
         var relations = api.MapGroup("/relations");
+
+        relations.MapGet("/", async (BeetwerkDbContext db, CancellationToken ct) =>
+            await db.NeighborRelations
+                .Select(r => new RelationDto(r.Id, r.SpeciesAId, r.SpeciesBId, r.Rating))
+                .ToListAsync(ct));
 
         relations.MapPost("/", async (NeighborRelationInput input, BeetwerkDbContext db, CancellationToken ct) =>
         {

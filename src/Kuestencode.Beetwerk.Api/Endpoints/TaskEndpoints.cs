@@ -1,4 +1,6 @@
+using Kuestencode.Beetwerk.Api.Configuration;
 using Kuestencode.Beetwerk.Api.Contracts;
+using Kuestencode.Beetwerk.Api.Services;
 using Kuestencode.Beetwerk.Data;
 using Kuestencode.Beetwerk.Domain.Entities;
 using Kuestencode.Beetwerk.Domain.Enums;
@@ -34,6 +36,22 @@ public static class TaskEndpoints
             return tasks.Select(t => t.ToDto());
         });
 
+        group.MapGet("/calendar", async (int? year, bool? includeDone, BeetwerkDbContext db, BeetwerkOptions options,
+            TimeProvider time, HttpContext context, CancellationToken ct) =>
+        {
+            var exportYear = year ?? time.GetLocalNow().Year;
+            if (exportYear is < 2000 or > 2100)
+                return ApiResults.Error("Ungültiges Jahr.");
+
+            var garden = (await db.Gardens.FindAsync([Garden.SingletonId], ct))!;
+            var tasks = await db.Tasks.Include(t => t.Object).ToListAsync(ct);
+            var ics = CalendarExporter.Export(tasks,
+                new CalendarExporter.Options(exportYear, includeDone ?? false, garden.Name, options.NotifyHour, time.GetUtcNow()));
+
+            context.Response.Headers.ContentDisposition = $"attachment; filename=\"beetwerk-{exportYear}.ics\"";
+            return Results.Text(ics, "text/calendar; charset=utf-8");
+        });
+
         group.MapGet("/{id:int}", async (int id, BeetwerkDbContext db, CancellationToken ct) =>
             await db.Tasks.Include(t => t.Object).FirstOrDefaultAsync(t => t.Id == id, ct) is { } task
                 ? Results.Ok(task.ToDto())
@@ -62,7 +80,8 @@ public static class TaskEndpoints
             return Results.Ok(task.ToDto());
         });
 
-        group.MapPost("/{id:int}/complete", async (int id, BeetwerkDbContext db, TimeProvider time, CancellationToken ct) =>
+        group.MapPost("/{id:int}/complete", async (int id, System.Security.Claims.ClaimsPrincipal user, BeetwerkDbContext db,
+            TimeProvider time, CancellationToken ct) =>
         {
             var task = await db.Tasks.Include(t => t.Object).FirstOrDefaultAsync(t => t.Id == id, ct);
             if (task is null)
@@ -70,9 +89,11 @@ public static class TaskEndpoints
             if (task.Status == GardenTaskStatus.Done)
                 return ApiResults.Conflict("Die Aufgabe ist bereits erledigt.");
 
-            var next = task.Complete(time.GetUtcNow(), DateOnly.FromDateTime(time.GetLocalNow().DateTime));
+            var today = DateOnly.FromDateTime(time.GetLocalNow().DateTime);
+            var next = task.Complete(time.GetUtcNow(), today);
             if (next is not null)
                 db.Tasks.Add(next);
+            HistoryEndpoints.LogCompletion(db, task, user.Identity?.Name, today, time.GetUtcNow());
             await db.SaveChangesAsync(ct);
             if (next is not null)
                 await db.Entry(next).Reference(t => t.Object).LoadAsync(ct);
@@ -90,6 +111,9 @@ public static class TaskEndpoints
             // Die beim Erledigen erzeugte Folgeinstanz zurücknehmen, sonst gäbe es den Termin doppelt.
             await db.Tasks
                 .Where(t => t.GeneratedFromTaskId == id && t.Status == GardenTaskStatus.Open)
+                .ExecuteDeleteAsync(ct);
+            await db.ObjectLog
+                .Where(l => l.TaskId == id && l.Kind == ObjectLogKind.TaskCompleted)
                 .ExecuteDeleteAsync(ct);
             task.Reopen();
             await db.SaveChangesAsync(ct);

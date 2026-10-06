@@ -12,7 +12,8 @@ import {
 import { TerraDrawMapLibreGLAdapter } from "terra-draw-maplibre-gl-adapter";
 import { dueBucket, type DueBucket } from "../lib/dates";
 import { anchorOf, boundsOf } from "../lib/geo";
-import type { AppConfig, Garden, GardenObject, GardenTask, Geometry, GeometryKind, ObjectType } from "../lib/types";
+import type { NeighborConflict } from "../lib/neighbors";
+import type { AppConfig, Corners, Garden, GardenObject, GardenTask, Geometry, GeometryKind, MapOverlay, ObjectType, Position } from "../lib/types";
 
 export interface MapCallbacks {
   onSelectObject: (id: number) => void;
@@ -32,6 +33,8 @@ export interface MapData {
   selectedTaskId: number | null;
   hiddenObjectId: number | null;
   hiddenTaskId: number | null;
+  conflicts: NeighborConflict[];
+  showConflicts: boolean;
 }
 
 // MapLibre leitet die Worker-Adresse sonst aus import.meta.url ab, die nach dem Bündeln ins Leere zeigt.
@@ -39,6 +42,9 @@ maplibregl.setWorkerUrl(maplibreWorkerUrl);
 
 const DRAW_MODE: Record<GeometryKind, string> = { Point: "point", LineString: "linestring", Polygon: "polygon" };
 const DRAW_COLOR = "#ffd600";
+const CONFLICT_COLOR = "#e53935";
+// Eigene Luftbilder liegen über den Kacheln, aber unter Gartengrenze und Objekten.
+const OVERLAY_BEFORE_LAYER = "boundary-line";
 const CLICK_LAYERS = ["objects-fill", "objects-line", "task-areas-fill", "task-areas-line"];
 const BUCKET_RANK: Record<DueBucket, number> = { overdue: 0, today: 1, week: 2, later: 3 };
 
@@ -60,6 +66,10 @@ function buildStyle(config: AppConfig): StyleSpecification {
   return { version: 8, sources, layers };
 }
 
+function centerOf(corners: Corners): Position {
+  return [corners.reduce((s, c) => s + c[0], 0) / 4, corners.reduce((s, c) => s + c[1], 0) / 4];
+}
+
 function approximateArea(geometry: Geometry): number {
   const [[minLng, minLat], [maxLng, maxLat]] = boundsOf(geometry);
   return (maxLng - minLng) * (maxLat - minLat);
@@ -74,6 +84,9 @@ export class GardenMap {
   private editingFeatureId: string | number | null = null;
   private interactive = true;
   private interactiveTimer: ReturnType<typeof setTimeout> | undefined;
+  private overlayUrls = new Map<number, string>();
+  private aligning: { id: number; corners: Corners } | null = null;
+  private alignMarkers: maplibregl.Marker[] = [];
 
   constructor(container: HTMLElement, config: AppConfig, garden: Garden, private callbacks: MapCallbacks) {
     this.map = new maplibregl.Map({
@@ -159,6 +172,22 @@ export class GardenMap {
       layout: { "line-cap": "round", "line-join": "round" },
       paint: { "line-color": DRAW_COLOR, "line-width": 4 },
     });
+
+    map.addSource("conflicts", { type: "geojson", data: emptyCollection() });
+    map.addLayer({
+      id: "conflicts-line",
+      type: "line",
+      source: "conflicts",
+      filter: ["==", ["geometry-type"], "LineString"],
+      paint: { "line-color": CONFLICT_COLOR, "line-width": 3, "line-dasharray": [1.5, 1] },
+    });
+    map.addLayer({
+      id: "conflicts-point",
+      type: "circle",
+      source: "conflicts",
+      filter: ["==", ["geometry-type"], "Point"],
+      paint: { "circle-radius": 16, "circle-color": "transparent", "circle-stroke-color": CONFLICT_COLOR, "circle-stroke-width": 3 },
+    });
   }
 
   private createDraw(): TerraDraw {
@@ -239,6 +268,19 @@ export class GardenMap {
         .map((t) => ({ type: "Feature" as const, geometry: t.geometry!, properties: { id: t.id } })),
     });
 
+    // Schlechte Nachbarn: rot gestrichelte Verbindung zwischen den Objekten und Ringe um beide.
+    const conflictFeatures = data.showConflicts
+      ? data.conflicts.flatMap(({ a, b }) => {
+          const [pa, pb] = [anchorOf(a.geometry), anchorOf(b.geometry)];
+          return [
+            { type: "Feature" as const, geometry: { type: "LineString" as const, coordinates: [pa, pb] }, properties: {} },
+            { type: "Feature" as const, geometry: { type: "Point" as const, coordinates: pa }, properties: {} },
+            { type: "Feature" as const, geometry: { type: "Point" as const, coordinates: pb }, properties: {} },
+          ];
+        })
+      : [];
+    this.source("conflicts").setData({ type: "FeatureCollection", features: conflictFeatures });
+
     this.source("boundary").setData(
       data.boundary ? { type: "FeatureCollection", features: [{ type: "Feature", geometry: data.boundary, properties: {} }] } : emptyCollection(),
     );
@@ -259,13 +301,14 @@ export class GardenMap {
   private renderMarkers(objects: GardenObject[], data: MapData, freeTasks: GardenTask[]) {
     for (const marker of this.markers) marker.remove();
     this.markers = [];
+    const conflicting = new Set(data.showConflicts ? data.conflicts.flatMap((c) => [c.a.id, c.b.id]) : []);
 
     for (const obj of objects) {
       if (obj.geometry.type !== "Point") continue;
       const type = data.typeById.get(obj.objectTypeId);
       const element = document.createElement("button");
       element.type = "button";
-      element.className = "map-pin" + (obj.id === data.selectedObjectId ? " selected" : "");
+      element.className = "map-pin" + (obj.id === data.selectedObjectId ? " selected" : "") + (conflicting.has(obj.id) ? " conflict" : "");
       element.style.setProperty("--pin-color", type?.color ?? "#9e9e9e");
       element.textContent = type?.icon ?? "📍";
       element.title = obj.name;
@@ -386,6 +429,120 @@ export class GardenMap {
   view() {
     const center = this.map.getCenter();
     return { centerLatitude: center.lat, centerLongitude: center.lng, zoom: Math.round(this.map.getZoom() * 10) / 10 };
+  }
+
+  /** Gleicht die Bildquellen der eigenen Luftbilder mit der Liste ab (hinzufügen, entfernen, aktualisieren). */
+  async setOverlays(overlays: MapOverlay[]) {
+    await this.loaded;
+    const present = new Set(overlays.map((o) => o.id));
+    for (const id of [...this.overlayUrls.keys()]) {
+      if (present.has(id)) continue;
+      this.map.removeLayer(`overlay-${id}`);
+      this.map.removeSource(`overlay-${id}`);
+      this.overlayUrls.delete(id);
+    }
+
+    for (const overlay of overlays) {
+      const id = `overlay-${overlay.id}`;
+      const source = this.map.getSource(id) as maplibregl.ImageSource | undefined;
+      if (!source) {
+        this.map.addSource(id, { type: "image", url: overlay.imageUrl, coordinates: overlay.corners });
+        this.map.addLayer({ id, type: "raster", source: id, paint: { "raster-fade-duration": 0 } }, OVERLAY_BEFORE_LAYER);
+      } else if (this.overlayUrls.get(overlay.id) !== overlay.imageUrl) {
+        source.updateImage({ url: overlay.imageUrl, coordinates: overlay.corners });
+      } else if (this.aligning?.id !== overlay.id) {
+        source.setCoordinates(overlay.corners);
+      }
+      this.overlayUrls.set(overlay.id, overlay.imageUrl);
+      this.map.setPaintProperty(id, "raster-opacity", overlay.opacity);
+      const visible = overlay.visible || this.aligning?.id === overlay.id;
+      this.map.setLayoutProperty(id, "visibility", visible ? "visible" : "none");
+    }
+  }
+
+  setOverlayOpacity(overlayId: number, opacity: number) {
+    if (this.map.getLayer(`overlay-${overlayId}`)) this.map.setPaintProperty(`overlay-${overlayId}`, "raster-opacity", opacity);
+  }
+
+  /** Startposition für ein neues Bild: mittig in der aktuellen Ansicht, Seitenverhältnis beibehalten. */
+  placementForView(aspectRatio: number): Corners {
+    const { clientWidth: width, clientHeight: height } = this.map.getContainer();
+    const maxWidth = width * 0.7;
+    const maxHeight = height * 0.6;
+    const boxWidth = Math.min(maxWidth, maxHeight * aspectRatio);
+    const boxHeight = boxWidth / aspectRatio;
+    const left = (width - boxWidth) / 2;
+    const top = (height - boxHeight) / 2;
+    const at = (x: number, y: number): Position => {
+      const { lng, lat } = this.map.unproject([x, y]);
+      return [lng, lat];
+    };
+    return [at(left, top), at(left + boxWidth, top), at(left + boxWidth, top + boxHeight), at(left, top + boxHeight)];
+  }
+
+  /**
+   * Ausrichten eines Luftbilds: vier ziehbare Ecken und ein Griff in der Mitte zum Verschieben.
+   * Freie Ecken erlauben Drehen, Skalieren und leichtes Entzerren in einem.
+   */
+  async startAlign(overlay: MapOverlay, onChange: (corners: Corners) => void) {
+    await this.loaded;
+    this.stopAlign();
+    this.setInteractive(false);
+    const corners = overlay.corners.map((c) => [...c] as Position) as Corners;
+    this.aligning = { id: overlay.id, corners };
+    const source = this.map.getSource(`overlay-${overlay.id}`) as maplibregl.ImageSource | undefined;
+    if (this.map.getLayer(`overlay-${overlay.id}`)) this.map.setLayoutProperty(`overlay-${overlay.id}`, "visibility", "visible");
+
+    const apply = () => {
+      source?.setCoordinates(corners);
+      cornerMarkers.forEach((marker, i) => marker.setLngLat(corners[i]));
+      moveMarker.setLngLat(centerOf(corners));
+      onChange(corners.map((c) => [...c] as Position) as Corners);
+    };
+
+    const cornerMarkers = corners.map((corner, i) => {
+      const element = document.createElement("div");
+      element.className = "align-handle";
+      element.setAttribute("aria-label", `Ecke ${i + 1} verschieben`);
+      const marker = new maplibregl.Marker({ element, draggable: true }).setLngLat(corner).addTo(this.map);
+      marker.on("drag", () => {
+        const { lng, lat } = marker.getLngLat();
+        corners[i] = [lng, lat];
+        apply();
+      });
+      return marker;
+    });
+
+    const moveElement = document.createElement("div");
+    moveElement.className = "align-move";
+    moveElement.textContent = "✥";
+    moveElement.setAttribute("aria-label", "Bild verschieben");
+    const moveMarker = new maplibregl.Marker({ element: moveElement, draggable: true }).setLngLat(centerOf(corners)).addTo(this.map);
+    let last = moveMarker.getLngLat();
+    moveMarker.on("dragstart", () => (last = moveMarker.getLngLat()));
+    moveMarker.on("drag", () => {
+      const now = moveMarker.getLngLat();
+      const [dLng, dLat] = [now.lng - last.lng, now.lat - last.lat];
+      last = now;
+      corners.forEach((c, i) => (corners[i] = [c[0] + dLng, c[1] + dLat]));
+      apply();
+    });
+
+    this.alignMarkers = [...cornerMarkers, moveMarker];
+  }
+
+  finishAlign(): Corners | null {
+    const corners = this.aligning?.corners ?? null;
+    this.stopAlign();
+    return corners ? (corners.map((c) => [...c] as Position) as Corners) : null;
+  }
+
+  stopAlign() {
+    if (!this.aligning) return;
+    for (const marker of this.alignMarkers) marker.remove();
+    this.alignMarkers = [];
+    this.aligning = null;
+    this.setInteractive(true);
   }
 
   resize() {

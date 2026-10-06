@@ -28,6 +28,7 @@ export interface Garden {
   centerLongitude: number;
   zoom: number;
   boundary: Geometry | null;
+  neighborWarningDistance: number;
 }
 
 export type FieldType = "Text" | "Date" | "Species";
@@ -97,6 +98,7 @@ export interface PlantSpeciesDetail {
   species: PlantSpecies;
   neighbors: Neighbor[];
   objectCount: number;
+  templates: TaskTemplate[];
 }
 
 export interface NeighborRelationInput {
@@ -145,4 +147,52 @@ export interface GardenTaskInput {
 export interface AppUser {
   username: string;
   isCurrent: boolean;
+}
+
+export type Corners = [Position, Position, Position, Position];
+
+export interface MapOverlay {
+  id: number;
+  name: string;
+  width: number;
+  height: number;
+  corners: Corners;
+  opacity: number;
+  visible: boolean;
+  imageUrl: string;
+}
+
+export interface Relation {
+  id: number;
+  speciesAId: number;
+  speciesBId: number;
+  rating: NeighborRating;
+}
+
+export interface TaskTemplate {
+  id: number;
+  title: string;
+  description: string | null;
+  frequency: Frequency;
+  interval: number;
+  seasonStartMonth: number | null;
+  seasonEndMonth: number | null;
+  startMonth: number | null;
+  startDay: number;
+  notify: boolean;
+  leadDays: number;
+}
+
+export type TaskTemplateInput = Omit<TaskTemplate, "id">;
+
+export type HistoryKind = "Note" | "Created" | "TaskCompleted" | "Photo";
+
+export interface HistoryEntry {
+  id: number;
+  date: string;
+  kind: HistoryKind;
+  text: string;
+  createdBy: string | null;
+  taskId: number | null;
+  photo: { id: number; imageUrl: string; thumbnailUrl: string; caption: string | null } | null;
 }
