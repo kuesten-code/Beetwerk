@@ -196,3 +196,50 @@ export interface HistoryEntry {
   taskId: number | null;
   photo: { id: number; imageUrl: string; thumbnailUrl: string; caption: string | null } | null;
 }
+
+export type DeviceCommand = "Start" | "Pause" | "ParkUntilFurtherNotice" | "ParkUntilNextSchedule" | "ResumeSchedule";
+
+export type DeviceActivity = "Unknown" | "Mowing" | "GoingHome" | "Charging" | "Leaving" | "Parked" | "Paused" | "Stopped" | "Error" | "Offline";
+
+export interface DeviceProviderInfo {
+  key: string;
+  name: string;
+  configured: boolean;
+  commands: DeviceCommand[];
+  startNeedsDuration: boolean;
+}
+
+export interface DeviceInfo {
+  externalId: string;
+  name: string;
+  model: string | null;
+}
+
+export interface DeviceStatus {
+  externalId: string;
+  name: string;
+  activity: DeviceActivity;
+  rawState: string | null;
+  batteryPercent: number | null;
+  cuttingHeight: number | null;
+  cuttingHeightMin: number;
+  cuttingHeightMax: number;
+  errorCode: number | null;
+  errorText: string | null;
+  nextStart: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  connected: boolean;
+  updatedAt: string;
+}
+
+export interface DeviceLink {
+  objectId: number;
+  provider: string;
+  externalId: string;
+  settings: Record<string, string>;
+  createTasksOnError: boolean;
+  status: DeviceStatus | null;
+  error: string | null;
+  fetchedAt: string | null;
+}

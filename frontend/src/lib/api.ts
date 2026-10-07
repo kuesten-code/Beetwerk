@@ -2,6 +2,10 @@ import type {
   AppConfig,
   AppUser,
   Corners,
+  DeviceCommand,
+  DeviceInfo,
+  DeviceLink,
+  DeviceProviderInfo,
   HistoryEntry,
   MapOverlay,
   Relation,
@@ -48,8 +52,9 @@ async function request<T>(method: string, url: string, body?: unknown): Promise<
     const payload = await response.json().catch(() => null);
     throw new ApiError(response.status, payload?.error ?? `Fehler ${response.status}`);
   }
-  if (response.status === 204) return undefined as T;
-  return (await response.json()) as T;
+  // 204 und 202 (z. B. Gerätebefehle) kommen ohne Inhalt.
+  const text = await response.text();
+  return (text ? JSON.parse(text) : undefined) as T;
 }
 
 async function upload<T>(url: string, form: FormData): Promise<T> {
@@ -142,6 +147,17 @@ export const api = {
   },
 
   calendarUrl: (year: number, includeDone: boolean) => `/api/tasks/calendar?year=${year}&includeDone=${includeDone}`,
+
+  deviceProviders: () => get<DeviceProviderInfo[]>("/api/devices/providers"),
+  providerDevices: (key: string) => get<DeviceInfo[]>(`/api/devices/providers/${key}/devices`),
+  devices: () => get<DeviceLink[]>("/api/devices"),
+  linkDevice: (objectId: number, provider: string, externalId: string, settings: Record<string, string>, createTasksOnError: boolean) =>
+    put<DeviceLink>(`/api/objects/${objectId}/device`, { provider, externalId, settings, createTasksOnError }),
+  unlinkDevice: (objectId: number) => del(`/api/objects/${objectId}/device`),
+  refreshDevice: (objectId: number) => post<DeviceLink>(`/api/objects/${objectId}/device/refresh`),
+  deviceCommand: (objectId: number, command: DeviceCommand, durationMinutes?: number) =>
+    post<void>(`/api/objects/${objectId}/device/commands`, { command, durationMinutes }),
+  setCuttingHeight: (objectId: number, height: number) => put<void>(`/api/objects/${objectId}/device/cutting-height`, { height }),
 
   users: () => get<AppUser[]>("/api/users"),
   createUser: (username: string, password: string) => post<AppUser>("/api/users", { username, password }),

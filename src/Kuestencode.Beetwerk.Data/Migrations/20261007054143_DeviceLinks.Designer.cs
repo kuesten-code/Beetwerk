@@ -3,6 +3,7 @@ using System;
 using Kuestencode.Beetwerk.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -10,9 +11,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Kuestencode.Beetwerk.Data.Migrations
 {
     [DbContext(typeof(BeetwerkDbContext))]
-    partial class BeetwerkDbContextModelSnapshot : ModelSnapshot
+    [Migration("20261007054143_DeviceLinks")]
+    partial class DeviceLinks
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.12");

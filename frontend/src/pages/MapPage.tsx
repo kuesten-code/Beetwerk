@@ -52,7 +52,7 @@ function saveHiddenTypes(ids: Set<number>) {
 
 export function MapPage({ active }: { active: boolean }) {
   const data = useAppData();
-  const { config, garden, objectTypes, objects, openTasks, typeById, objectById, reloadObjects, reloadTasks, setGarden, overlays, conflicts, reloadOverlays } = data;
+  const { config, garden, objectTypes, objects, openTasks, typeById, objectById, reloadObjects, reloadTasks, setGarden, overlays, conflicts, reloadOverlays, devices } = data;
   const toast = useToast();
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<GardenMap | null>(null);
@@ -113,9 +113,10 @@ export function MapPage({ active }: { active: boolean }) {
       hiddenObjectId: editing?.target === "object" ? editing.object.id : null,
       hiddenTaskId: editing?.target === "task" ? editing.task.id : null,
       conflicts,
+      devices,
       showConflicts,
     });
-  }, [objects, typeById, openTasks, garden.boundary, visibleTypeIds, showTasks, mode, conflicts, showConflicts]);
+  }, [objects, typeById, openTasks, garden.boundary, visibleTypeIds, showTasks, mode, conflicts, showConflicts, devices]);
 
   useEffect(() => {
     void mapRef.current?.setOverlays(overlays);

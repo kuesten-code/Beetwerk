@@ -26,6 +26,14 @@ public sealed class BeetwerkOptions
     public string VapidSubject { get; init; } = "mailto:admin@localhost";
     public int NotifyHour { get; init; } = 8;
 
+    public string? HusqvarnaClientId { get; init; }
+    public string? HusqvarnaClientSecret { get; init; }
+    /// <summary>Automower Connect erlaubt 10 000 Anfragen pro Monat – alle 10 Minuten sind rund 4 400.</summary>
+    public TimeSpan HusqvarnaPollInterval { get; init; } = TimeSpan.FromMinutes(10);
+    public string? HomeAssistantUrl { get; init; }
+    public string? HomeAssistantToken { get; init; }
+    public TimeSpan HomeAssistantPollInterval { get; init; } = TimeSpan.FromMinutes(1);
+
     public required TileSource PrimaryTiles { get; init; }
     public TileSource? FallbackTiles { get; init; }
 
@@ -75,6 +83,12 @@ public sealed class BeetwerkOptions
             VapidPrivateKey = NullIfEmpty(config["VAPID_PRIVATE_KEY"]),
             VapidSubject = NullIfEmpty(config["VAPID_SUBJECT"]) ?? "mailto:admin@localhost",
             NotifyHour = int.TryParse(config["NOTIFY_HOUR"], out var hour) && hour is >= 0 and <= 23 ? hour : 8,
+            HusqvarnaClientId = NullIfEmpty(config["HUSQVARNA_CLIENT_ID"]),
+            HusqvarnaClientSecret = NullIfEmpty(config["HUSQVARNA_CLIENT_SECRET"]),
+            HusqvarnaPollInterval = Seconds(config["HUSQVARNA_POLL_SECONDS"], fallback: 600, minimum: 300),
+            HomeAssistantUrl = NullIfEmpty(config["HOMEASSISTANT_URL"])?.TrimEnd('/'),
+            HomeAssistantToken = NullIfEmpty(config["HOMEASSISTANT_TOKEN"]),
+            HomeAssistantPollInterval = Seconds(config["HOMEASSISTANT_POLL_SECONDS"], fallback: 60, minimum: 10),
             PrimaryTiles = new TileSource(
                 NullIfEmpty(config["MAP_PRIMARY_URL"]) ?? DefaultPrimaryUrl,
                 NullIfEmpty(config["MAP_PRIMARY_ATTRIBUTION"]) ?? DefaultPrimaryAttribution,
@@ -89,6 +103,9 @@ public sealed class BeetwerkOptions
     }
 
     private static string? NullIfEmpty(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private static TimeSpan Seconds(string? value, int fallback, int minimum) =>
+        TimeSpan.FromSeconds(int.TryParse(value, out var seconds) ? Math.Max(seconds, minimum) : fallback);
 
     private static bool Flag(string? value, bool fallback) =>
         bool.TryParse(value, out var result) ? result : fallback;

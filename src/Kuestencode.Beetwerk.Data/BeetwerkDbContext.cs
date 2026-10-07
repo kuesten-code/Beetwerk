@@ -21,6 +21,7 @@ public class BeetwerkDbContext(DbContextOptions<BeetwerkDbContext> options) : Db
     public DbSet<ObjectPhoto> ObjectPhotos => Set<ObjectPhoto>();
     public DbSet<ObjectLogEntry> ObjectLog => Set<ObjectLogEntry>();
     public DbSet<SpeciesTaskTemplate> SpeciesTaskTemplates => Set<SpeciesTaskTemplate>();
+    public DbSet<DeviceLink> DeviceLinks => Set<DeviceLink>();
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
@@ -124,6 +125,15 @@ public class BeetwerkDbContext(DbContextOptions<BeetwerkDbContext> options) : Db
             e.Property(l => l.CreatedBy).HasMaxLength(100);
             e.HasIndex(l => new { l.ObjectId, l.Date });
             e.HasIndex(l => l.TaskId);
+        });
+
+        modelBuilder.Entity<DeviceLink>(e =>
+        {
+            e.HasOne(d => d.Object).WithMany().HasForeignKey(d => d.ObjectId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(d => d.ObjectId).IsUnique();
+            e.Property(d => d.Provider).HasMaxLength(50);
+            e.Property(d => d.ExternalId).HasMaxLength(200);
+            e.Property(d => d.Settings).HasConversion(Json<Dictionary<string, string>>(), JsonComparer<Dictionary<string, string>>());
         });
 
         modelBuilder.Entity<SpeciesTaskTemplate>(e =>

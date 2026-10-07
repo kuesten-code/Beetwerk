@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { useAppData } from "../AppData";
 import { Sheet } from "../components/Sheet";
 import { useToast } from "../components/Toast";
+import { DeviceProvidersSection } from "../components/DeviceProvidersSection";
 import { OverlaysSection } from "../components/OverlaysSection";
 import { UsersSection } from "../components/UsersSection";
 import { api, errorMessage } from "../lib/api";
@@ -76,6 +77,8 @@ export function SettingsPage() {
       </section>
 
       <OverlaysSection />
+
+      <DeviceProvidersSection />
 
       <PushSection />
 

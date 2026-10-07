@@ -2,6 +2,8 @@ using System.Text.Json.Serialization;
 using Kuestencode.Beetwerk.Api.Auth;
 using Kuestencode.Beetwerk.Api.Cli;
 using Kuestencode.Beetwerk.Api.Configuration;
+using Kuestencode.Beetwerk.Api.Devices;
+using Kuestencode.Beetwerk.Domain.Devices;
 using Kuestencode.Beetwerk.Api.Endpoints;
 using Kuestencode.Beetwerk.Api.Push;
 using Kuestencode.Beetwerk.Api.Services;
@@ -31,6 +33,13 @@ builder.Services.AddHttpClient(TileEndpoints.HttpClientName, client =>
 });
 
 builder.Services.AddSingleton<UploadStore>();
+builder.Services.AddHttpClient(HusqvarnaProvider.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(20));
+builder.Services.AddHttpClient(HomeAssistantProvider.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(15));
+builder.Services.AddSingleton<IDeviceProvider, HusqvarnaProvider>();
+builder.Services.AddSingleton<IDeviceProvider, HomeAssistantProvider>();
+builder.Services.AddSingleton<DeviceStatusCache>();
+builder.Services.AddScoped<DeviceService>();
+builder.Services.AddHostedService<DeviceMonitorService>();
 builder.Services.AddSingleton<VapidKeyStore>();
 builder.Services.AddSingleton<IPushSender, WebPushSender>();
 builder.Services.AddScoped<PushDispatcher>();
@@ -106,6 +115,7 @@ api.MapUserEndpoints();
 api.MapOverlayEndpoints();
 api.MapTemplateEndpoints();
 api.MapHistoryEndpoints();
+api.MapDeviceEndpoints();
 api.MapFallback(() => Results.NotFound());
 
 app.MapFallbackToFile("index.html", new StaticFileOptions

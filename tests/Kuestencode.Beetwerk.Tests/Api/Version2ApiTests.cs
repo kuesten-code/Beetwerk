@@ -202,15 +202,13 @@ public class Version2ApiTests : IAsyncLifetime
             { File(Jpeg, "image/jpeg"), "thumbnail", "thumb.jpg" }
         };
         var entry = await (await client.PostAsync($"/api/objects/{plant.Id}/photos", form)).ReadAsync<HistoryEntryDto>();
-        var photosDir = Directory.GetDirectories(Path.GetTempPath() + "beetwerk-tests")
-            .Select(d => Path.Combine(d, "uploads", "photos"))
-            .Where(Directory.Exists)
-            .SelectMany(Directory.GetFiles)
-            .Count();
-        Assert.True(photosDir >= 2);
+        // Nur das eigene Datenverzeichnis zählen – parallel laufende Testklassen räumen ihre gerade auf.
+        var photosDir = Path.Combine(factory.DataDirectory, "uploads", "photos");
+        Assert.Equal(2, Directory.GetFiles(photosDir).Length);
 
         await client.DeleteAsync($"/api/objects/{plant.Id}");
         Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync(entry.Photo!.ImageUrl)).StatusCode);
+        Assert.Empty(Directory.GetFiles(photosDir));
     }
 
     [Fact]

@@ -1119,3 +1119,124 @@ section {
   border-color: #e53935;
   box-shadow: 0 0 0 3px #e53935, 0 2px 6px rgb(0 0 0 / 0.45);
 }
+
+/* ---------- Geräte ---------- */
+
+.device {
+  display: grid;
+  gap: 10px;
+}
+
+.device-status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+.device-status div {
+  display: grid;
+}
+
+.device-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  color: #fff;
+  background: var(--later);
+  flex-shrink: 0;
+}
+
+.device-status.mowing .device-icon,
+.device-status.leaving .device-icon {
+  background: var(--accent);
+}
+
+.device-status.charging .device-icon,
+.device-status.parked .device-icon,
+.device-status.goinghome .device-icon {
+  background: var(--week);
+}
+
+.device-status.error .device-icon,
+.device-status.offline .device-icon {
+  background: var(--danger);
+}
+
+.device-status.paused .device-icon,
+.device-status.stopped .device-icon {
+  background: var(--today);
+}
+
+details summary {
+  cursor: pointer;
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+details[open] {
+  display: grid;
+  gap: 8px;
+}
+
+.map-pin[data-device]::after {
+  content: attr(data-device);
+  position: absolute;
+  right: -8px;
+  bottom: -6px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 4px;
+  border-radius: 10px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 20px;
+  color: #fff;
+  background: var(--week);
+  border: 2px solid #fff;
+}
+
+.map-pin[data-device-state="mowing"]::after,
+.map-pin[data-device-state="leaving"]::after {
+  background: #2e7d32;
+}
+
+.map-pin[data-device-state="error"]::after,
+.map-pin[data-device-state="offline"]::after {
+  background: #d32f2f;
+}
+
+.map-pin {
+  position: relative;
+}
+
+.mower-position {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 0.95rem;
+  background: rgb(255 255 255 / 0.9);
+  border: 2px solid #2e7d32;
+  box-shadow: 0 2px 6px rgb(0 0 0 / 0.4);
+  pointer-events: none;
+}
+
+.provider-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  border: 1px solid var(--border);
+}

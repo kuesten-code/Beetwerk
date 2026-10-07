@@ -5,6 +5,7 @@ import { api } from "../lib/api";
 import { formatDate } from "../lib/dates";
 import { formatMeters } from "../lib/neighbors";
 import type { GardenObject, PlantSpeciesDetail } from "../lib/types";
+import { DevicePanel } from "./DevicePanel";
 import { NeighborList } from "./NeighborList";
 import { ObjectHistory } from "./ObjectHistory";
 import { TaskRow, useTaskActions } from "./TaskList";
@@ -21,7 +22,7 @@ interface ObjectDetailProps {
 }
 
 export function ObjectDetail({ object, justCreated = false, onEdit, onEditGeometry, onAddTask, onDelete }: ObjectDetailProps) {
-  const { typeById, objectById, openTasks, objects, conflicts } = useAppData();
+  const { typeById, objectById, openTasks, objects, conflicts, devices } = useAppData();
   const { complete } = useTaskActions();
   const [species, setSpecies] = useState<PlantSpeciesDetail | null>(null);
   const [offerTemplates, setOfferTemplates] = useState(justCreated);
@@ -58,6 +59,13 @@ export function ObjectDetail({ object, justCreated = false, onEdit, onEditGeomet
             ))}
           </ul>
         </div>
+      )}
+
+      {(type?.name === "Gerät" || devices.has(object.id)) && (
+        <section className="device-section">
+          <h3>Gerät</h3>
+          <DevicePanel object={object} />
+        </section>
       )}
 
       {offerTemplates && species && species.templates.length > 0 && (

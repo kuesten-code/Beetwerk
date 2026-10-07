@@ -30,9 +30,11 @@ public sealed class BeetwerkFactory(Dictionary<string, string?>? settings = null
     public const string AdminUser = "admin";
     public const string AdminPassword = "geheim-genug-123";
 
-    private readonly string dataDirectory = Path.Combine(Path.GetTempPath(), "beetwerk-tests", Guid.NewGuid().ToString("N"));
+    public string DataDirectory { get; } = Path.Combine(Path.GetTempPath(), "beetwerk-tests", Guid.NewGuid().ToString("N"));
 
     public FakePushSender Push { get; } = new();
+
+    public Devices.FakeDeviceProvider Devices { get; } = new();
 
     // Mittwoch, 10 Uhr UTC – liegt in jeder Zeitzone Mitteleuropas nach NOTIFY_HOUR=0.
     public FakeTimeProvider Time { get; } = new(new DateTimeOffset(2026, 10, 7, 10, 0, 0, TimeSpan.Zero));
@@ -42,7 +44,7 @@ public sealed class BeetwerkFactory(Dictionary<string, string?>? settings = null
         builder.UseEnvironment("Testing");
         var defaults = new Dictionary<string, string?>
         {
-            ["DATA_DIR"] = dataDirectory,
+            ["DATA_DIR"] = DataDirectory,
             ["AUTH_MODE"] = "login",
             ["ADMIN_USERNAME"] = AdminUser,
             ["ADMIN_PASSWORD"] = AdminPassword,
@@ -62,9 +64,10 @@ public sealed class BeetwerkFactory(Dictionary<string, string?>? settings = null
             services.RemoveAll<TimeProvider>();
             services.AddSingleton<TimeProvider>(Time);
             // Tests rufen den TaskNotifier gezielt auf; ein parallel laufender Scheduler würde sie unvorhersehbar machen.
-            var scheduler = services.SingleOrDefault(d => d.ImplementationType == typeof(TaskNotificationService));
-            if (scheduler is not null)
-                services.Remove(scheduler);
+            foreach (var background in services.Where(d => d.ImplementationType == typeof(TaskNotificationService)
+                                                            || d.ImplementationType == typeof(Kuestencode.Beetwerk.Api.Devices.DeviceMonitorService)).ToList())
+                services.Remove(background);
+            services.AddSingleton<Kuestencode.Beetwerk.Domain.Devices.IDeviceProvider>(Devices);
         });
     }
 
@@ -88,7 +91,7 @@ public sealed class BeetwerkFactory(Dictionary<string, string?>? settings = null
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
         try
         {
-            Directory.Delete(dataDirectory, recursive: true);
+            Directory.Delete(DataDirectory, recursive: true);
         }
         catch (IOException)
         {

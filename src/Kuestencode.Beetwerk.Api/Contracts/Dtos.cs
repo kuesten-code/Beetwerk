@@ -65,6 +65,18 @@ public record OverlayDto(int Id, string Name, int Width, int Height, double[][] 
 
 public record OverlayInput(string Name, double[][] Corners, double Opacity, bool Visible);
 
+public record DeviceProviderDto(string Key, string Name, bool Configured, IReadOnlyList<Domain.Devices.DeviceCommand> Commands, bool StartNeedsDuration);
+
+public record DeviceLinkDto(
+    int ObjectId, string Provider, string ExternalId, IReadOnlyDictionary<string, string> Settings, bool CreateTasksOnError,
+    Domain.Devices.DeviceStatus? Status, string? Error, DateTimeOffset? FetchedAt);
+
+public record DeviceLinkInput(string Provider, string ExternalId, Dictionary<string, string>? Settings, bool CreateTasksOnError);
+
+public record DeviceCommandInput(Domain.Devices.DeviceCommand Command, int? DurationMinutes);
+
+public record CuttingHeightInput(int Height);
+
 public record UserDto(string Username, bool IsCurrent);
 
 public record CreateUserInput(string Username, string Password);

@@ -13,7 +13,8 @@ import { TerraDrawMapLibreGLAdapter } from "terra-draw-maplibre-gl-adapter";
 import { dueBucket, type DueBucket } from "../lib/dates";
 import { anchorOf, boundsOf } from "../lib/geo";
 import type { NeighborConflict } from "../lib/neighbors";
-import type { AppConfig, Corners, Garden, GardenObject, GardenTask, Geometry, GeometryKind, MapOverlay, ObjectType, Position } from "../lib/types";
+import { ACTIVITY } from "../lib/devices";
+import type { AppConfig, Corners, DeviceLink, Garden, GardenObject, GardenTask, Geometry, GeometryKind, MapOverlay, ObjectType, Position } from "../lib/types";
 
 export interface MapCallbacks {
   onSelectObject: (id: number) => void;
@@ -34,6 +35,7 @@ export interface MapData {
   hiddenObjectId: number | null;
   hiddenTaskId: number | null;
   conflicts: NeighborConflict[];
+  devices: Map<number, DeviceLink>;
   showConflicts: boolean;
 }
 
@@ -304,16 +306,33 @@ export class GardenMap {
     const conflicting = new Set(data.showConflicts ? data.conflicts.flatMap((c) => [c.a.id, c.b.id]) : []);
 
     for (const obj of objects) {
-      if (obj.geometry.type !== "Point") continue;
+      const device = data.devices.get(obj.id);
+      // Flächen bekommen nur dann einen Pin, wenn ein Gerät daran hängt – sonst reicht die Fläche selbst.
+      if (obj.geometry.type !== "Point" && !device) continue;
       const type = data.typeById.get(obj.objectTypeId);
       const element = document.createElement("button");
       element.type = "button";
       element.className = "map-pin" + (obj.id === data.selectedObjectId ? " selected" : "") + (conflicting.has(obj.id) ? " conflict" : "");
       element.style.setProperty("--pin-color", type?.color ?? "#9e9e9e");
       element.textContent = type?.icon ?? "📍";
-      element.title = obj.name;
-      element.setAttribute("aria-label", obj.name);
+      const status = device?.status;
+      const label = status ? `${obj.name}: ${ACTIVITY[status.activity].label}` : obj.name;
+      if (status) {
+        element.dataset.device = ACTIVITY[status.activity].icon;
+        element.dataset.deviceState = status.activity.toLowerCase();
+      }
+      element.title = label;
+      element.setAttribute("aria-label", label);
       this.addMarker(element, anchorOf(obj.geometry), () => this.callbacks.onSelectObject(obj.id));
+
+      // Mäher mit GPS melden ihre aktuelle Position – die zeigen wir zusätzlich zum festen Standort.
+      if (status?.latitude != null && status.longitude != null && status.activity !== "Charging" && status.activity !== "Parked") {
+        const position = document.createElement("div");
+        position.className = "mower-position";
+        position.textContent = "🤖";
+        position.title = `${status.name} (aktuelle Position)`;
+        this.markers.push(new maplibregl.Marker({ element: position }).setLngLat([status.longitude, status.latitude]).addTo(this.map));
+      }
     }
 
     if (!data.showTasks) return;

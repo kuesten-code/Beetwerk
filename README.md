@@ -12,6 +12,7 @@ Beetwerk – selbst gehosteter Gartenplaner mit Satellitenkarte. Beete, Hecken, 
 - **Warnung bei schlechten Nachbarn**: Stehen Pflanzen, deren Arten als schlechte Nachbarn eingetragen sind, näher als der Warnabstand (Standard 1 m, einstellbar unter **Mehr**), werden sie auf der Karte rot markiert und im Objekt aufgeführt.
 - **Pflanzenvorlagen**: typische Aufgaben je Art (z. B. „Ausgeizen, wöchentlich Juni bis August“). Sie werden beim Anlegen einer Pflanze dieser Art zur Übernahme angeboten.
 - **Verlauf und Fotos** je Objekt: Notizen, Fotos (direkt mit der Handykamera), angelegt und erledigte Aufgaben werden automatisch festgehalten.
+- **Mähroboter-Anbindung** (Husqvarna Automower Connect oder Home Assistant): Status, Akku und nächster Start am Geräte-Pin und im Objekt. Starten, Pausieren und Parken sowie die Schnitthöhe direkt aus der App. Meldet der Mäher einen Fehler, entsteht automatisch eine Aufgabe mit Push.
 - **Kalender-Export**: Aufgaben eines Jahres als `.ics` (📅 in der Aufgabenliste). Wiederholungen als Serie, Erinnerungen als Alarm, hinter der normalen Anmeldung, ohne öffentlichen Feed.
 - **Push-Benachrichtigungen** (Web Push/VAPID). Der Scheduler prüft stündlich und meldet jede fällige Aufgabe einmal. Ein Klick öffnet die Aufgabe.
 - **PWA**, mobile first: Bedienung mit dem Finger, zum Home-Bildschirm hinzufügbar.
@@ -82,6 +83,26 @@ Kacheln werden über den Server geladen (`/tiles/...`). Viele Geodienste, darunt
 - Andere Bundesländer: Die meisten Vermessungsverwaltungen bieten DOP als WMS an. Die URL dann mit `CRS=EPSG:3857&BBOX={bbox-epsg-3857}&WIDTH=256&HEIGHT=256` angeben.
 
 
+## Mähroboter anbinden
+
+### Husqvarna Automower Connect
+
+1. Auf [developer.husqvarnagroup.cloud](https://developer.husqvarnagroup.cloud) mit dem Husqvarna-Konto anmelden, mit dem auch die Automower-App läuft.
+2. **Create application**: Name beliebig, Redirect-URL z. B. `http://localhost`.
+3. Der Anwendung die APIs **Authentication API** und **Automower Connect API** hinzufügen (*Connect new API*).
+4. **Application Key** und **Application Secret** in die `.env` eintragen:
+   ```
+   HUSQVARNA_CLIENT_ID=<Application Key>
+   HUSQVARNA_CLIENT_SECRET=<Application Secret>
+   ```
+5. `docker compose up -d`, dann in der App ein Objekt vom Typ **Gerät** antippen → **Gerät** → *Geräte suchen* → *Verbinden*.
+
+Die Automower-API erlaubt 10 000 Anfragen pro Monat. Beetwerk fragt deshalb standardmäßig alle 10 Minuten ab (`HUSQVARNA_POLL_SECONDS`) und nach Befehlen einmal gezielt nach. Die Schnitthöhe ist eine Stufe von 1 bis 9 wie in der Automower-App.
+
+### Home Assistant
+
+`HOMEASSISTANT_URL` (z. B. `http://homeassistant.local:8123`) und ein langlebiges Zugangstoken (HA → Profil → Sicherheit) in die `.env` eintragen. Verbunden wird eine `lawn_mower.*`-Entity. Akku, Schnitthöhe und Fehler werden aus den Entities der Husqvarna-Integration abgeleitet (`sensor.<name>_battery`, `number.<name>_cutting_height`, `sensor.<name>_error`) oder beim Verbinden einzeln angegeben. Über Home Assistant gibt es Starten, Pausieren und Parken; ein Start ist dort nur innerhalb des Zeitplans aus der Automower-App möglich.
+
 ## Push-Benachrichtigungen
 
 - Push braucht **HTTPS**. Ist `PUBLIC_URL` eine `http://`-Adresse (außer `localhost`), schaltet Beetwerk Push automatisch ab. Mit `PUSH_ENABLED=false` lässt es sich auch ganz abschalten.
@@ -145,4 +166,4 @@ Geometrien werden als GeoJSON-Text (WGS84) gespeichert. Ein Wechsel auf PostgreS
 ## Ausblick
 
 - **Später**: GeoTIFF direkt aus WebODM übernehmen (Position automatisch aus der Datei).
-- **v3**: Geräteanbindung (z. B. Husqvarna Automower, Home Assistant). Vorbereitet sind der Objekttyp „Gerät“ und das Interface `IDeviceProvider`.
+- **Später**: Gerätestatus live per WebSocket statt Abfrage, Arbeitsbereiche (Work Areas) des Automowers, weitere Geräte über Home Assistant (Bewässerung, Sensoren).
